@@ -92,7 +92,7 @@ app.post("/webauthn/authenticate", async (req, res) => {
 
 // db connect
 mongoose.connect(
-  "mongodb+srv://dummy:dummy@farmapi.5ieyq.mongodb.net/wenauth?retryWrites=true&w=majority",
+  MONGODBURL,
   {
     useNewUrlParser: true,
     useUnifiedTopology: true,
