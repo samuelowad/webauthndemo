@@ -1,13 +1,17 @@
 const mongoose = require("mongoose");
 
 const UserSchema = new mongoose.Schema({
-    publicKey: {
-        type: String,
-        // required: true,
-    },
-    challenge: String,
-    webId: String,
-    name: String,
+  publicKey: {
+    type: String,
+  },
+  challenge: String,
+  rawId: String,
+  name: String,
+  origin: String,
+  valid: {
+    type: Boolean,
+    default: true,
+  },
 });
 
 const User = mongoose.model("User", UserSchema);

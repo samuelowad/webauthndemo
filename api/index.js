@@ -6,96 +6,107 @@ const mongoose = require("mongoose");
 const userModel = require("./models");
 const { randomBytes } = require("crypto");
 
-const { verifyPackedAttestation } = require("./newtest");
+const { verifyPackedAttestation } = require("./attestation");
 
-const { crpy1 } = require("./testex");
+const { validateAssertion } = require("./assertion");
+const { parseClientData, encodeString, decodeString } = require("./util");
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-app.post("/register-request", async (req, res) => {
-    const { name } = req.body;
+app.post("/webauthn/register/request", async (req, res) => {
+  const { name } = req.body;
 
-    const user = await userModel.findOne({ name });
-    if (user)
-        return res.status(400).json({ message: "user already registered" });
+  const user = await userModel.findOne({ name });
+  if (user) return res.status(400).json({ message: "user already registered" });
 
-    var challenge = randomBytes(64).toString("hex");
+  var challenge = randomBytes(64).toString("hex");
 
-    const newUser = await new userModel({ name, challenge });
-    try {
-        newUser.save();
-    } catch (e) {
-        return res.sendStatus(500);
-    }
+  console.log("chall", challenge);
 
-    res.status(200).json(challenge);
+  const newUser = await new userModel({ name, challenge });
+  try {
+    newUser.save();
+  } catch (e) {
+    return res.sendStatus(500);
+  }
+
+  res.status(200).json(challenge);
 });
 
-app.post("/register", async (req, res) => {
-    const { name } = req.body;
+app.post("/webauthn/register", async (req, res) => {
+  const { name } = req.body;
 
-    const user = await userModel.findOne({ name });
-    if (!user) {
-        return res.sendStatus(400);
-    }
+  const user = await userModel.findOne({ name });
 
-    const myexport = verifyPackedAttestation(
-        req.body.parsed.response.attestationObject,
-        req.body.parsed.response.clientDataJSON
-    );
+  if (!user) {
+    return res.sendStatus(400);
+  }
 
-    if (!myexport.dataValid) return res.sendStatus(400);
+  const parsedClient = await parseClientData(req.body.response.clientDataJSON);
 
-    user.publicKey = myexport.publicKey;
-    user.webId = req.body.parsed.rawId;
-    user.save();
+  console.log("pared ", parsedClient);
 
-    res.status(200).json({ dataValid: myexport.dataValid });
+  const myexport = verifyPackedAttestation(
+    req.body.response.attestationObject,
+    req.body.response.clientDataJSON
+  );
+
+  if (!myexport.dataValid) return res.sendStatus(400);
+
+  user.publicKey = encodeString(myexport.publicKey);
+  user.rawId = req.body.parsed.rawId;
+  user.origin = parsedClient.origin;
+  user.save();
+
+  res.status(200).json({ dataValid: myexport.dataValid });
 });
 
-app.post("/login-request", async (req, res) => {
-    const { name } = req.body;
+app.post("/webauthn/authenticate/request", async (req, res) => {
+  const { name } = req.body;
 
-    const user = await userModel.findOne({ name });
+  const user = await userModel.findOne({ name });
 
-    if (!user) return res.sendStatus(400);
+  if (!user) return res.sendStatus(400);
 
-    res.status(200).json({ webId: user.webId, challenge: user.challenge });
+  res.status(200).json({ webId: user.webId, challenge: user.challenge });
 });
 
-app.post("/login", async (req, res) => {
-    const user = await userModel.findOne({ name: req.body.name });
+app.post("/webauthn/authenticate", async (req, res) => {
+  const user = await userModel.findOne({ name: req.body.name });
 
-    // console.log("user", user);
+  const parsedClient = await parseClientData(req.body.parsed.clientDataJSON);
 
-    const validate = await crpy1(
-        req.body.parsed.response.authenticatorData,
-        req.body.parsed.response.clientDataJSON,
-        req.body.parsed.response.signature,
-        user.publicKey
-    );
+  if (parsedClient.origin != user.origin) return res.sendStatus(400);
 
-    res.status(200).json({ dataValid: validate });
+  const validate = await validateAssertion(
+    req.body.response.authenticatorData,
+    req.body.response.clientDataJSON,
+    req.body.response.signature,
+    decodeString(user.publicKey)
+  );
+
+  res.status(200).json({ dataValid: validate });
 });
 
+// db connect
 mongoose.connect(
-    MONGODB_URL,
-    {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-    }
+  "mongodb+srv://dummy:dummy@farmapi.5ieyq.mongodb.net/wenauth?retryWrites=true&w=majority",
+  {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  }
 );
 
 const db = mongoose.connection;
 db.on("error", console.error.bind(console, "connection error: "));
 db.once("open", function () {
-    console.log("Connected successfully");
+  console.log("Connected successfully");
 });
 
-http.createServer(app).listen(8000, () => {
-    console.log(
-        "Server is listening at http://localhost:8000. Ctrl^C to stop it."
-    );
+http.createServer(app).listen(3000, () => {
+  console.log(
+    "Server is listening at http://localhost:3000. Ctrl^C to stop it."
+  );
 });

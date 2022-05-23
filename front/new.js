@@ -4,19 +4,27 @@
 
 // let dbPubkey = undefined;
 
-const url = "http://localhost:8000";
+const url = "http://localhost:3000";
+// const url ="https://lucky-guests-matter-193-6-53-166.loca.lt/"
 
 // webauthn create
 async function webCreate() {
   const person = prompt("Please enter your name");
+  const clientId = prompt("Please enter your clientId");
+  const authenticatorName = prompt("Please enter your authenticattorName");
+  const origin = prompt("Please enter your origin");
 
   // get challenge
-  const { data, error } = await apiCall({ name: person }, "register-request");
+  const { data, error } = await apiCall(
+    { clientId, authenticatorName, origin },
+    "webauthn/register/request"
+  );
 
   if (error) return;
 
   const publicKeyCredentialCreationOptions = {
-    challenge: Uint8Array.from(data, (c) => c.charCodeAt(0)),
+    // challenge: Uint8Array.from(data, (c) => c.charCodeAt(0)),
+    challenge: f(data.challenge),
     rp: {
       name: "localhost",
       //id: "http://127.0.0.1:3000",
@@ -28,7 +36,8 @@ async function webCreate() {
     },
     pubKeyCredParams: [{ alg: -7, type: "public-key" }],
     authenticatorSelection: {
-      authenticatorAttachment: "cross-platform",
+      //       authenticatorAttachment: "cross-platform",
+      userVerification: "discouraged",
     },
     timeout: 60000,
     attestation: "direct",
@@ -51,9 +60,11 @@ async function webCreate() {
     };
   })[0];
 
-  const attestationData = Object.assign({ parsed, name: person });
+  const attestationData = { ...parsed, clientId, authenticatorName };
 
-  const validateAttestion = apiCall(attestationData, "register");
+  console.log("attes", attestationData);
+
+  const validateAttestion = apiCall(attestationData, "webauthn/register");
   alert("user registered");
 }
 
@@ -61,16 +72,23 @@ async function webCreate() {
 
 async function webGet() {
   const person = prompt("Please enter your name");
+  const clientId = prompt("Please enter your clientId");
+  const authenticatorName = prompt("Please enter your authenticattorName");
 
   // get rawId and challenge
-  const { data, error } = await apiCall({ name: person }, "login-request");
+  const { data, error } = await apiCall(
+    { clientId, authenticatorName },
+    "webauthn/authenticate/request"
+  );
 
   if (error) return;
   const publicKeyCredentialRequestOptions = {
-    challenge: Uint8Array.from(data.challenge, (c) => c.charCodeAt(0)),
+    // challenge: Uint8Array.from(data.challenge, (c) => c.charCodeAt(0)),
+    challenge: f(data.challenge),
+
     allowCredentials: [
       {
-        id: f(data.webId),
+        id: f(data.rawId),
         type: "public-key",
         transports: ["usb", "ble", "nfc"],
       },
@@ -96,11 +114,26 @@ async function webGet() {
     };
   })[0];
 
-  const assertionData = Object.assign({ parsed, name: person });
+  //   const assertionData = Object.assign({ parsed, name: person });
+  const assertionData = { ...parsed, clientId, authenticatorName };
 
-  const valAssert = await apiCall(assertionData, "login");
+  console.log("assert", assertionData);
+
+  const valAssert = await apiCall(assertionData, "webauthn/authenticate");
   if (valAssert.data) alert("login successful");
 }
+
+// check for support
+function supported() {
+  return !!(
+    navigator.credentials &&
+    navigator.credentials.create &&
+    navigator.credentials.get &&
+    window.PublicKeyCredential
+  );
+}
+
+console.log(supported());
 
 // convert to base64
 function m(e) {
